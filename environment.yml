@@ -1,0 +1,22 @@
+# Conda environment for the qmtquant project.
+#
+# Design choice: conda provides ONLY the interpreter and pip. Every trading
+# dependency (backtrader, numpy, pandas, matplotlib, pytest) is installed via
+# the pip section as an editable install of this project (`-e .[dev]`). That
+# keeps all version constraints single-sourced in pyproject.toml -- there is no
+# second place where a pin can drift out of sync.
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate qmt-projects
+#   # the editable install above already ran; re-run if pyproject changes:
+#   pip install -e ".[dev]"
+name: qmt-projects
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+      - -e .[dev]

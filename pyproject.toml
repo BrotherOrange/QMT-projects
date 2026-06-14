@@ -1,0 +1,51 @@
+[build-system]
+# Hatchling is a lightweight, standards-based build backend that handles the
+# src-layout cleanly without extra configuration boilerplate.
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "qmtquant"
+version = "0.1.0"
+description = "A backtrader-based quant backtesting toolkit with a future-facing xtquant/miniQMT live-trading path."
+readme = "README.md"
+requires-python = ">=3.10,<3.11"
+license = { text = "MIT" }
+authors = [{ name = "qmtquant" }]
+keywords = ["quant", "backtrader", "backtest", "trading", "xtquant", "qmt"]
+classifiers = [
+    "Programming Language :: Python :: 3.10",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business :: Financial :: Investment",
+]
+
+# Single source of truth for runtime dependencies.
+# These versions are PINNED because they are known-good together:
+#   - backtrader 1.9.78.123 is the last stable release; newer forks diverge.
+#   - numpy is held <2 because backtrader uses deprecated/removed numpy aliases
+#     (e.g. np.bool, np.float) that break under numpy 2.x.
+#   - matplotlib is held <3.8 because backtrader's plotting calls APIs removed
+#     in matplotlib 3.8 (e.g. axis label / locator internals).
+dependencies = [
+    "backtrader==1.9.78.123",
+    "numpy>=1.26,<2",
+    "pandas",
+    "matplotlib>=3.5,<3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+qmtquant = "qmtquant.cli:main"
+
+[project.urls]
+Homepage = "https://example.invalid/qmtquant"
+
+[tool.hatch.build.targets.wheel]
+# src-layout: the importable package lives under src/.
+packages = ["src/qmtquant"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
