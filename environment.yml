@@ -6,17 +6,22 @@
 # keeps all version constraints single-sourced in pyproject.toml -- there is no
 # second place where a pin can drift out of sync.
 #
+# Python 3.12 is used so a SINGLE environment serves both backtrader backtesting
+# and the xtquant / miniQMT (迅投) tooling, whose runtime targets Python 3.12.
+# The backtrader stack (backtrader 1.9.78.123 + numpy<2 + pandas<3 + matplotlib<3.8)
+# is verified working on 3.12 (full pytest suite passes).
+#
 # Usage:
 #   conda env create -f environment.yml
-#   conda activate qmt-projects
+#   conda activate qmt-projects-py312
 #   # the editable install above already ran; re-run if pyproject changes:
 #   pip install -e ".[dev]"
-name: qmt-projects
+name: qmt-projects-py312
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.12
   - pip
   - pip:
       - -e .[dev]

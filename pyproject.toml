@@ -9,12 +9,14 @@ name = "qmtquant"
 version = "0.1.0"
 description = "A backtrader-based quant backtesting toolkit with a future-facing xtquant/miniQMT live-trading path."
 readme = "README.md"
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.10,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "qmtquant" }]
 keywords = ["quant", "backtrader", "backtest", "trading", "xtquant", "qmt"]
 classifiers = [
     "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Intended Audience :: Financial and Insurance Industry",
     "Topic :: Office/Business :: Financial :: Investment",
 ]
@@ -26,10 +28,13 @@ classifiers = [
 #     (e.g. np.bool, np.float) that break under numpy 2.x.
 #   - matplotlib is held <3.8 because backtrader's plotting calls APIs removed
 #     in matplotlib 3.8 (e.g. axis label / locator internals).
+#   - pandas is held <3 because backtrader (unmaintained) predates pandas 3.0's
+#     Copy-on-Write / string-dtype default changes; 2.x is the validated line on
+#     both Python 3.10 and 3.12.
 dependencies = [
     "backtrader==1.9.78.123",
     "numpy>=1.26,<2",
-    "pandas",
+    "pandas>=2.2,<3",
     "matplotlib>=3.5,<3.8",
 ]
 
