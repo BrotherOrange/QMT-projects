@@ -1,48 +1,61 @@
-"""Smoke check #1: imports and pinned-version sanity.
+"""Smoke check #1: imports and third-party sanity.
 
-Confirms the package imports cleanly and the third-party stack is the
-known-good pinned combination (backtrader importable, numpy major < 2,
-pandas present, ``qmtquant.__version__`` exposed).
+Confirms the package imports cleanly (no backtrader / xtquant required) and the
+curated top-level runtime API is exposed.
 """
 
 from __future__ import annotations
 
 
 def test_third_party_versions() -> None:
-    """backtrader / numpy / pandas import and report sane versions."""
-    import backtrader as bt
+    """numpy / pandas import and report sane versions (numpy held <2 for xtquant)."""
     import numpy as np
     import pandas as pd
 
-    # numpy must stay on the 1.x line (backtrader 1.9.78.123 is not numpy-2 safe).
     numpy_major = int(np.__version__.split(".")[0])
-    assert numpy_major < 2, f"numpy must be <2, got {np.__version__}"
-
-    # backtrader and pandas simply need to expose a version string.
-    assert getattr(bt, "__version__", None), "backtrader.__version__ missing"
+    assert numpy_major < 2, f"numpy must be <2 (xtquant .pyd compat), got {np.__version__}"
     assert getattr(pd, "__version__", None), "pandas.__version__ missing"
 
 
 def test_package_imports() -> None:
-    """The top-level package imports and exposes a version."""
+    """The top-level package imports and exposes the curated runtime API."""
     import qmtquant
 
-    assert isinstance(qmtquant.__version__, str)
-    assert qmtquant.__version__  # non-empty
+    assert isinstance(qmtquant.__version__, str) and qmtquant.__version__
 
-    # Curated top-level re-exports should be present.
     for name in (
-        "run_backtest",
-        "build_cerebro",
-        "BacktestResult",
+        # runtime
+        "Strategy",
+        "Context",
+        "Bar",
+        "ReplayFeed",
+        "run",
+        "Result",
         "Metrics",
-        "save_plot",
-        "SmaCross",
-        "generate_ohlcv",
-        "SyntheticDataSource",
+        # broker
+        "Broker",
+        "Order",
+        "OrderSide",
+        "OrderType",
+        "Position",
+        "PaperBroker",
+        "AShareRules",
+        # data
         "DataSource",
         "OHLCV_COLUMNS",
-        "BrokerConfig",
-        "BacktestConfig",
+        "validate_ohlcv",
+        "generate_ohlcv",
+        "SyntheticDataSource",
+        "CsvDataSource",
+        "XtQuantDataSource",
     ):
         assert hasattr(qmtquant, name), f"qmtquant.{name} not exported"
+
+
+def test_package_does_not_import_backtrader() -> None:
+    """Importing qmtquant must not pull in backtrader (the dep was removed)."""
+    import sys
+
+    import qmtquant  # noqa: F401
+
+    assert "backtrader" not in sys.modules, "qmtquant must not import backtrader"

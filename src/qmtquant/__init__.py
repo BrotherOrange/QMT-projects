@@ -1,40 +1,72 @@
-"""qmtquant -- a backtrader-based quant backtesting toolkit.
+"""qmtquant —— 自建统一量化运行时（回测 / 模拟 / 实盘）。
 
-This package root defines the version and re-exports a small, curated public
-API so callers can write, e.g.::
+写一套策略，换"数据源 + broker"即可在回测/模拟/实盘之间无感切换::
 
-    from qmtquant import run_backtest, save_plot, SmaCross, generate_ohlcv
+    from qmtquant import Strategy, ReplayFeed, run, PaperBroker, XtQuantDataSource
 
-The dependency direction inside the package is strictly one-way::
+    class MyStrategy(Strategy):
+        def on_bar(self, ctx):
+            ...   # 你的逻辑
 
-    data -> strategies -> backtest -> plotting
+    feed = ReplayFeed(XtQuantDataSource(period="1d").get_dataframe("000001.SZ"), "000001.SZ")
+    result = run(MyStrategy(), feed, PaperBroker(cash=100_000))
+    print(result.metrics)
 
-with ``live/`` as an independent, future-facing sibling.
+依赖方向：``data``(OHLCV 数据源) → ``runtime``(策略/引擎) → 结果；``live``(broker 抽象 +
+PaperBroker + 未来 XtQuantBroker) 被引擎使用。
 """
+
 from __future__ import annotations
 
 __version__: str = "0.1.0"
 
-from .backtest.engine import run_backtest, build_cerebro, BacktestResult
-from .backtest.analyzers import Metrics
-from .plotting.plot import save_plot
-from .strategies.sma_cross import SmaCross
+# 数据
+from .data.sources.base import DataSource, OHLCV_COLUMNS, validate_ohlcv
 from .data.sources.synthetic import generate_ohlcv, SyntheticDataSource
-from .data.sources.base import DataSource, OHLCV_COLUMNS
+from .data.sources.csv import CsvDataSource
+from .data.sources.xtquant_source import XtQuantDataSource
+
+# 运行时（策略 / 行情 / 引擎 / 结果）
+from .runtime.strategy import Strategy, Context
+from .runtime.feed import Bar, Feed, ReplayFeed
+from .runtime.engine import run
+from .runtime.result import Result, Metrics
+
+# 交易 broker（抽象 + 本地模拟；实盘 XtQuantBroker 见 live 子包）
+from .live.broker import Broker, Order, OrderSide, OrderType, Position
+from .live.paper_broker import PaperBroker, AShareRules
+
+# 配置
 from .config import BrokerConfig, BacktestConfig
 
 __all__ = [
     "__version__",
-    "run_backtest",
-    "build_cerebro",
-    "BacktestResult",
-    "Metrics",
-    "save_plot",
-    "SmaCross",
-    "generate_ohlcv",
-    "SyntheticDataSource",
+    # data
     "DataSource",
     "OHLCV_COLUMNS",
+    "validate_ohlcv",
+    "generate_ohlcv",
+    "SyntheticDataSource",
+    "CsvDataSource",
+    "XtQuantDataSource",
+    # runtime
+    "Strategy",
+    "Context",
+    "Bar",
+    "Feed",
+    "ReplayFeed",
+    "run",
+    "Result",
+    "Metrics",
+    # broker
+    "Broker",
+    "Order",
+    "OrderSide",
+    "OrderType",
+    "Position",
+    "PaperBroker",
+    "AShareRules",
+    # config
     "BrokerConfig",
     "BacktestConfig",
 ]

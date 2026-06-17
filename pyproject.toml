@@ -7,12 +7,12 @@ build-backend = "hatchling.build"
 [project]
 name = "qmtquant"
 version = "0.1.0"
-description = "A backtrader-based quant backtesting toolkit with a future-facing xtquant/miniQMT live-trading path."
+description = "A unified Python quant runtime: one strategy across backtest/paper/live over A-share data via xtquant/miniQMT."
 readme = "README.md"
 requires-python = ">=3.10,<3.13"
 license = { text = "MIT" }
 authors = [{ name = "qmtquant" }]
-keywords = ["quant", "backtrader", "backtest", "trading", "xtquant", "qmt"]
+keywords = ["quant", "backtest", "paper-trading", "trading", "xtquant", "qmt", "a-share"]
 classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -21,21 +21,13 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Investment",
 ]
 
-# Single source of truth for runtime dependencies.
-# These versions are PINNED because they are known-good together:
-#   - backtrader 1.9.78.123 is the last stable release; newer forks diverge.
-#   - numpy is held <2 because backtrader uses deprecated/removed numpy aliases
-#     (e.g. np.bool, np.float) that break under numpy 2.x.
-#   - matplotlib is held <3.8 because backtrader's plotting calls APIs removed
-#     in matplotlib 3.8 (e.g. axis label / locator internals).
-#   - pandas is held <3 because backtrader (unmaintained) predates pandas 3.0's
-#     Copy-on-Write / string-dtype default changes; 2.x is the validated line on
-#     both Python 3.10 and 3.12.
+# Single source of truth for runtime dependencies. The custom runtime depends
+# only on numpy + pandas (no backtrader). numpy is held <2 because the live path
+# uses 迅投 miniQMT's bundled xtquant, whose compiled .pyd extensions are built
+# against the numpy 1.x C-API; pandas held <3 as the validated line on Py3.10/3.11.
 dependencies = [
-    "backtrader==1.9.78.123",
     "numpy>=1.26,<2",
     "pandas>=2.2,<3",
-    "matplotlib>=3.5,<3.8",
 ]
 
 [project.optional-dependencies]

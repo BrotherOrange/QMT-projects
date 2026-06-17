@@ -1,219 +1,148 @@
 # qmtquant
 
-A small, well-structured quant backtesting toolkit built on
-[backtrader](https://www.backtrader.com/), with a future-facing
-xtquant / miniQMT live-trading path baked in as an empty shell.
-
-The package follows a strict one-way dependency direction:
+一个**自建的统一 Python 量化运行时**：写**一套**策略，换"数据源 + broker"即可在
+**回测 / 模拟 / 实盘**之间无感切换。A 股行情/交易经 迅投 xtquant / miniQMT 接入。
 
 ```
-data  ->  strategies  ->  backtest  ->  plotting
-live/ is an independent, future-facing sibling (no backtest coupling)
+data (OHLCV 数据源)  ->  runtime (Strategy / 引擎 / 结果)
+live/ : Broker 抽象  ->  PaperBroker(本地模拟, A股规则)  |  XtQuantBroker(实盘, v2)
 ```
 
-The engine depends only on the `DataSource` abstraction and a `bt.Strategy`
-subclass, so a CSV source, the seeded synthetic source, or (later) an xtquant
-market-data source can all be swapped in without touching the engine.
+- **回测/模拟**：`ReplayFeed`(历史K线) + `PaperBroker`（内存撮合，完整 A 股规则）
+- **实盘 (v2)**：`RealtimeFeed`(xtdata 实时) + `XtQuantBroker`(xttrader)
+- 策略只依赖 `Strategy` / `Context` 与 `Broker` 抽象 → 切换只换 feed + broker，**策略代码不改**。
+
+> 设计与决策见 `docs/superpowers/specs/2026-06-18-quant-runtime-design.md`
+> （为什么不用 backtrader、为什么不用 QMT 原生回测）。
 
 ---
 
-## Install (editable install is REQUIRED first)
+## 安装（src-layout，必须先 editable 安装）
 
-This project uses a **src-layout** (`src/qmtquant/...`). The package is not on
-`sys.path` until you install it. Always install it editable before importing or
-running anything -- otherwise `import qmtquant` will fail.
-
-### Option A -- conda (recommended; the `qmt-projects-py310` env)
+### conda（推荐：`qmt-projects-py310` 环境）
 
 ```bash
 conda env create -f environment.yml
 conda activate qmt-projects-py310
-# the editable dev install already ran via the environment.yml pip section;
-# re-run it any time pyproject.toml changes:
-pip install -e ".[dev]"
+pip install -e ".[dev]"          # pyproject 变动后重跑
 ```
 
-> Python 3.10 is used so a single env serves both the backtrader backtest stack
-> and the xtquant live path. The installed miniQMT terminal ships `xtquant`
-> .pyd builds for cp36..cp311 only (NO cp312), so xtquant cannot be imported on
-> Python 3.12. See "xtquant / miniQMT integration" below.
+> 用 **Python 3.10**：实盘路径依赖 miniQMT 自带的 `xtquant`，其编译扩展(.pyd)只到 cp311
+> （**无 cp312**），故 3.12 无法 import xtquant。纯回测/模拟（合成或已下载的历史数据）不强求。
+> 接入 xtquant 见下文"xtquant / miniQMT 接入"。
 
-### Option B -- plain venv / pip
+### venv / pip
 
 ```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-# editable install with dev extras (pulls pinned backtrader/numpy/pandas/matplotlib + pytest)
-pip install -e ".[dev]"
+python -m venv .venv && .venv\Scripts\activate
+pip install -e ".[dev]"          # 仅 numpy<2 + pandas + pytest，无 backtrader
 ```
 
 ---
 
-## Run the example / CLI
-
-After the editable install, a console script named `qmtquant` is on your PATH:
-
-```bash
-# default synthetic backtest, prints a summary and saves a plot to artifacts/
-qmtquant
-
-# tune the run
-qmtquant --seed 7 --bars 500 --out artifacts/run7.png
-```
-
-Equivalent runnable demo script (not imported by the package or tests):
-
-```bash
-python scripts/run_backtest.py
-```
-
-Or from Python:
+## 快速上手：写一套策略，回测/模拟/实盘通用
 
 ```python
-from qmtquant import run_backtest, save_plot, SyntheticDataSource
+from qmtquant import Strategy, Context, ReplayFeed, PaperBroker, run, SyntheticDataSource
 
-result = run_backtest(SyntheticDataSource(n=300, seed=42))
-print(result.start_value, "->", result.end_value)
-print(result.metrics)
-save_plot(result.cerebro, "artifacts/backtrader_plot.png")
+class MyStrategy(Strategy):
+    def on_bar(self, ctx: Context) -> None:
+        ma5 = sum(ctx.history(5)) / 5 if len(ctx.history(5)) == 5 else None
+        # ... 你的逻辑；下单：ctx.buy(100) / ctx.sell(100) / ctx.broker.place_order(...)
+
+# 回测/模拟：合成数据（无需终端）
+df = SyntheticDataSource(n=300, seed=42).get_dataframe("SYNTH")
+result = run(MyStrategy(), ReplayFeed(df, "SYNTH"), PaperBroker(cash=100_000))
+print(result.metrics)          # total_return / sharpe / max_drawdown / num_trades
+print(result.final_cash, result.final_positions)
+```
+
+用**真实 A 股数据**回测/模拟（需先按下文接好 xtquant + 终端在运行）：
+
+```python
+from qmtquant import XtQuantDataSource, ReplayFeed, PaperBroker, run
+
+df = XtQuantDataSource(period="1d").get_dataframe("000001.SZ")
+result = run(MyStrategy(), ReplayFeed(df, "000001.SZ"), PaperBroker(cash=100_000))
+```
+
+**将来切实盘 (v2)**：把 `ReplayFeed` 换成 `RealtimeFeed`、`PaperBroker` 换成
+`XtQuantBroker(account_id=...)`，`MyStrategy` 一行不改。
+
+### 成交模型 & A 股规则（PaperBroker）
+
+- **成交时点**：第 t 根收盘决策、第 t+1 根开盘成交（无未来函数）。市价单成交于开盘价，
+  限价单按当根 `[low, high]` 盘中撮合。
+- **A 股规则**（`AShareRules`，可配）：T+1（当日买入当日不可卖）、涨跌停不可成交、整手 100、
+  佣金万三·最低 5 元 + 卖出印花税 0.05% + 双向过户费 0.001%。
+
+### CLI 演示
+
+```bash
+qmtquant --bars 300 --seed 42        # 合成数据 + 演示买入持有，打印结果摘要
 ```
 
 ---
 
-## Run the tests
+## 测试
 
 ```bash
 pytest
 ```
 
-`pytest` configuration lives in `pyproject.toml` (`testpaths=["tests"]`,
-`addopts="-q"`). The suite migrates the original 13 smoke checks (imports/
-versions, feed build, indicators, orders, trades, broker cash with commission,
-the four analyzers, and `save_plot` writing a PNG) into proper tests against the
-package API. The backtest runs **once** via a session-scoped fixture and many
-assertions check that single result.
+覆盖：包导入/版本、合成数据生成与校验、`ReplayFeed`、`PaperBroker` 各条 A 股规则
+（T+1 / 涨跌停 / 整手 / 费用 / 现金不足拒单 / 限价撮合）、引擎端到端冒烟。
+全部**离线、不依赖终端**；可选实盘数据测试用 `QMT_LIVE_TESTS=1` 开启。
 
 ---
 
-## NOTE: the `cerebro.plot()` blocking bug (and the fix)
+## 依赖
 
-backtrader's `cerebro.plot()` **unconditionally** calls
-`matplotlib.pyplot.show()` at the end. In a plain `.py` script (no GUI event
-loop) this **blocks forever** in the Tk mainloop -- and it does so *even when you
-have already called `matplotlib.use("Agg")`*. `Agg` stops a window from opening,
-but `show()` still hands control to the GUI loop and never returns.
-
-The verified fix lives in `src/qmtquant/plotting/plot.py` as `save_plot(...)`:
-
-1. `matplotlib.use("Agg")` is set **at import time**, before `pyplot` is imported
-   (and `pyplot` is imported nowhere else in the package).
-2. Around the `cerebro.plot()` call, `plt.show` is temporarily replaced with a
-   no-op, then restored in a `finally` block (so interactive sessions are not
-   polluted).
-3. The returned figures are written to disk with `fig.savefig(...)`.
-
-```python
-from qmtquant import save_plot
-saved_paths = save_plot(result.cerebro, "artifacts/backtrader_plot.png")
-```
-
-**Not needed in Jupyter.** Inside a Jupyter notebook, inline plotting works and
-`cerebro.plot()` returns normally -- `save_plot` is only required for headless
-`.py` script / CLI runs.
+`pyproject.toml` 仅 `numpy>=1.26,<2` + `pandas>=2.2,<3`（dev 加 `pytest`）。
+`numpy` held `<2` 是因为 miniQMT 自带 xtquant 的 .pyd 针对 numpy 1.x C-API 编译。
+**不再依赖 backtrader / matplotlib**。
 
 ---
 
-## Why the dependency pins (numpy<2, matplotlib<3.8)
+## xtquant / miniQMT 接入（2026-06-18 实测可用）
 
-These are pinned in `pyproject.toml` because they are known-good *together* with
-backtrader `1.9.78.123`:
+迅投 miniQMT 终端已安装；`xtquant` 的数据端(`xtdata`)与交易通道(`xttrader.connect()`)
+均已对真实终端验证可用。
 
-- **numpy `>=1.26,<2`** -- backtrader references numpy aliases that were removed
-  in numpy 2.x (e.g. `np.bool`, `np.float`). Under numpy 2.x backtrader raises
-  `AttributeError` on import/use, so numpy is held in the 1.26.x line.
-- **matplotlib `>=3.5,<3.8`** -- backtrader's plotting code calls matplotlib
-  internals removed in 3.8 (axis label / locator / date handling), which breaks
-  `cerebro.plot()`. Held below 3.8 to keep plotting working.
+**环境要求 — 仅 Python 3.10/3.11。** 终端自带 `xtquant` 的 `.pyd` 只到 cp311（无 cp312）。
 
-`pandas` is intentionally unpinned (its API surface used here is stable across
-versions compatible with numpy 1.26.x).
-
----
-
-## Live trading roadmap (xtquant, after qualification)
-
-Market **data** via xtquant is now **implemented** (`XtQuantDataSource`, verified
-end-to-end: real daily bars -> backtrader backtest). The live **broker** (order
-placement) is still a stub raising `NotImplementedError`, pending the trading wiring.
-
-- `qmtquant/live/broker.py` -- the `Broker` ABC plus the
-  `Order` / `Position` / `OrderSide` / `OrderType` domain types.
-- `qmtquant/live/xtquant_broker.py` -- `XtQuantBroker` stub; after QMT
-  qualification, implement it via `xtquant.xttrader`
-  (`XtQuantTrader` / `StockAccount`: login, `order_stock`, `cancel_order_stock`,
-  `query_stock_positions`, `query_stock_asset`).
-- `qmtquant/data/sources/xtquant_source.py` -- `XtQuantDataSource` **implemented**
-  via `xtquant.xtdata` (`download_history_data` + `get_market_data_ex`); pulls real
-  A-share OHLCV bars (daily/minute) into the `DataSource` contract. Usage:
-  `run_backtest(XtQuantDataSource(period="1d"), symbol="000001.SZ")` (needs the env
-  set up via `scripts/setup_xtquant.py` + a running terminal).
-
-Configuration for the live path is documented in `.env.example`
-(`QMTQUANT_XT_ACCOUNT_ID`, `QMTQUANT_MINI_QMT_PATH`). The backtest path needs
-none of these.
-
-To keep CI green before qualification, **no** `import xtquant` appears at module
-top-level anywhere; xtquant is imported lazily inside the methods that need it.
-
----
-
-## xtquant / miniQMT integration (verified working 2026-06-18)
-
-The 迅投 miniQMT terminal is installed and its `xtquant` API has been verified
-against the running terminal (both the data side `xtdata` and the trade-channel
-`xttrader.connect()` succeed).
-
-**Environment requirement -- Python 3.10/3.11 only.** The terminal-bundled
-`xtquant` ships compiled `.pyd` extensions for cp36..cp311; there is **no
-cp312** build. So xtquant works in `qmt-projects-py310` but **cannot** be
-imported under Python 3.12.
-
-**Making `from xtquant import xtdata` work in the env.** `xtquant` is not a
-pip package here -- it lives inside the terminal install. Run once per env:
+**让 `from xtquant import xtdata` 在本环境可用**（`xtquant` 不是 pip 包，在终端安装目录内）：
 
 ```bash
 conda activate qmt-projects-py310
-python scripts/setup_xtquant.py          # or: --bin "<path>\bin.x64"
+python scripts/setup_xtquant.py          # 或： --bin "<你的QMT路径>\bin.x64"
 ```
 
-This creates a **directory junction** `xtquant` inside the env's site-packages
-pointing at the terminal's `bin.x64/Lib/site-packages/xtquant`. So `import
-xtquant` resolves normally and its `.pyd` loads its DLLs from the junction
-target (verified: even `xttrader.connect()` needs no extra `add_dll_directory`).
-Crucially this exposes **only `xtquant`** -- NOT the terminal's large Python-3.6
-package tree (IPython / Pillow 6 / pyreadline / ...), which would otherwise
-shadow or break the env (an early "append the whole site-packages" attempt made
-`pytest` crash on the terminal's ancient `pyreadline`). After setup, any
-script / REPL / xtquant skill in the env can `import xtquant` directly. The
-default terminal path is baked into `scripts/setup_xtquant.py` -- override with
-`--bin` or the `QMTQUANT_QMT_BIN_PATH` env var if you move/reinstall QMT.
-(Junctions need no admin rights on NTFS; the script falls back to copying if the
-junction can't be created.)
+该脚本在 env 的 site-packages 建一个**目录联接(junction)** `xtquant` 指向终端自带的
+`xtquant`——只暴露 xtquant 一个包（不污染本环境；实测连 `xttrader.connect()` 都无需额外
+`add_dll_directory`）。终端移动/重装后重跑即可（NTFS 上无需管理员；失败自动回退为复制）。
 
-**Verified-working API surface** (6/8 of the `xtquant-api-*` skills): stock list
-& sectors, `get_instrument_detail`, `download_history_data` + `get_market_data_ex`
-(1m/5m/1d/tick), `download_history_data2` (with callback), and financial data.
+**已验证可用**：股票列表/板块、`get_instrument_detail`、`download_history_data` +
+`get_market_data_ex`(1m/5m/1d/tick)、`download_history_data2`(带 callback)、财务数据。
 
-**This terminal build's quirks** (the skills were written for a newer xtquant;
-their scripts/docs have been corrected accordingly):
+**本终端 build 的坑**（相关 skill 脚本/文档已据此修正）：
 
-- No `incrementally` kwarg on `download_history_data` / `download_history_data2`
-  / `download_financial_data` -- do not pass it (raises `TypeError`).
-- No `get_instrument_detail_list` -- loop over `get_instrument_detail` instead.
-- `download_history_data2` **blocks forever without a `callback`** -- always pass one.
-- The `stoppricedata` (涨跌停价) and `buysellvol` (内外盘) periods are **not
-  supported** by this build (`get_market_data_ex` errors with "周期错误"). The
-  two skills that relied on them were removed. Workarounds: read 涨跌停价 from
-  `get_instrument_detail` (`UpStopPrice` / `DownStopPrice`), or compute it from
-  `preClose` x board ratio; reconstruct 内外盘 from tick data if needed.
+- 无 `incrementally` 参数（`download_history_data`/`download_history_data2`/`download_financial_data`），勿传。
+- 无 `get_instrument_detail_list`，请循环调用 `get_instrument_detail`。
+- `download_history_data2` 不传 `callback` 会永久阻塞。
+- `download_*` / `get_market_data_ex` 的日期参数必须是**字符串**（`%Y%m%d` 或 `%Y%m%d%H%M%S`），不接受 datetime。
+- `stoppricedata`(涨跌停)、`buysellvol`(内外盘) 周期本 build **不支持**；涨跌停改用
+  `get_instrument_detail` 的 `UpStopPrice`/`DownStopPrice`。
+
+配置见 `.env.example`（`QMTQUANT_XT_ACCOUNT_ID` / `QMTQUANT_MINI_QMT_PATH` /
+`QMTQUANT_QMT_BIN_PATH`）。`.env` 已被 git 忽略；**密码绝不入库**（只在 QMT 客户端手输）。
+
+---
+
+## 路线图（v2）
+
+- `RealtimeFeed`(xtdata 实时订阅) + `XtQuantBroker`(xttrader 实盘下单)，同一 `Strategy` 跑实盘；
+  券商模拟账户(假钱真 API)亦走 `XtQuantBroker`。
+- 多标的/选股域、更精细的限价撮合、结果绘图、参数扫描。
+- `live/xtquant_broker.py` 当前为 stub（`NotImplementedError`），实盘接入时实现
+  `xtquant.xttrader`（登录、`order_stock`、`cancel_order_stock`、`query_stock_positions`、`query_stock_asset`）。

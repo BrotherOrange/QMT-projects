@@ -2,7 +2,7 @@
 
 实现镜像了已验证通过的接入方式：``download_history_data`` 先把行情缓存到本地，
 ``get_market_data_ex`` 再读回，最后映射成 :data:`OHLCV_COLUMNS` 契约（带 DatetimeIndex），
-即可直接喂给 backtrader 引擎。数据端不需要任何资金账号/密码。
+即可经 :class:`~qmtquant.runtime.feed.ReplayFeed` 喂给运行时引擎。数据端不需要任何资金账号/密码。
 
 IMPORTANT: 这里**没有**顶层 ``import xtquant``，以便在没装 miniQMT SDK 的机器上也能正常
 ``import qmtquant``；``xtdata`` 在 :meth:`get_dataframe` 内部惰性导入。
@@ -68,7 +68,7 @@ class XtQuantDataSource(DataSource):
 
         步骤：（可选）下载缓存 -> ``get_market_data_ex`` 读回 -> 解析索引为
         DatetimeIndex -> 仅保留并排序 :data:`OHLCV_COLUMNS` -> 按 ``[start, end]`` 切片。
-        下游 :func:`qmtquant.data.feeds.make_pandas_feed` 会再做形状校验。
+        下游 :func:`qmtquant.data.sources.base.validate_ohlcv`（经 ReplayFeed）会再做形状校验。
 
         Raises
         ------

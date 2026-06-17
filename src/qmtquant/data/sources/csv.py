@@ -41,8 +41,8 @@ class CsvDataSource(DataSource):
         Steps: read the CSV, lowercase column names, parse the date column into
         a :class:`~pandas.DatetimeIndex`, keep / order only
         :data:`OHLCV_COLUMNS`, sort by date, and slice to ``[start, end]``.
-        Validation happens later in
-        :func:`qmtquant.data.feeds.make_pandas_feed`.
+        Shape validation happens later in
+        :func:`qmtquant.data.sources.base.validate_ohlcv` (via ``ReplayFeed``).
 
         Raises
         ------
