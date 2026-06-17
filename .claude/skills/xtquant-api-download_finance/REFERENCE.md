@@ -3,8 +3,10 @@
 ## download_financial_data
 
 ```python
- download_financial_data(stock_list, table_list=[], start_time='', end_time='', incrementally = None)
+ download_financial_data(stock_list, table_list=[], start_time='', end_time='')
 ```
+
+> ⚠️ 本机 `万联证券版` 终端实测：此 build 的 `download_financial_data` **不接受 `incrementally` 参数**（仅更新版 xtquant 有），请勿传。脚本已据此修正。
 
 **功能**：下载财务数据
 
@@ -16,7 +18,7 @@
 | table_list | list | 财务数据表名列表 传[]为下载全部表|
 | start_time | string | 起始时间 |
 | end_time | string | 结束时间，以m_anntime披露日期字段，按[start_time, end_time]范围筛选 |
-| incrementally | bool | 是否增量下载，建议调用时传入True或False,|
+| ~~incrementally~~ | bool | 是否增量下载 —— ⚠️ 本机终端 build **不支持此参数**，请勿传（仅更新版 xtquant 有）|
 
 ### 返回
 

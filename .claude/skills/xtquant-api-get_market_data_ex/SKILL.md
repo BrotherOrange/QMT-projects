@@ -10,6 +10,11 @@ Run the helper script:
 
 python scripts/get_market_data_ex.py input.txt
 
+> ⚠️ 本机终端兼容性（万联证券版，2026-06-18 实测）：`start_time` / `end_time` 必须是
+> **字符串**（日线 `'%Y%m%d'`，分钟/tick `'%Y%m%d%H%M%S'`），**不接受 `datetime` 对象**
+> （否则报 `get_market_data3 incompatible arguments`）。脚本已用 `fmt()` 按周期转字符串。
+> 运行环境须为 Python 3.10/3.11（本终端 xtquant 无 cp312）。
+
 > tips
 > 取期货品种的行情时，建议fill_data始终传False
 

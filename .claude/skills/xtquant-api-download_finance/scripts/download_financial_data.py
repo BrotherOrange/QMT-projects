@@ -9,7 +9,7 @@ stock = '000001.SZ'
 start_time = datetime(2000,1,1)
 end_time = datetime(2038,1,1)
 
-xtdata.download_financial_data([stock], [], start_time.strftime('%Y%m%d'), end_time.strftime('%Y%m%d'), incrementally=False)
+xtdata.download_financial_data([stock], [], start_time.strftime('%Y%m%d'), end_time.strftime('%Y%m%d'))
 
 
 # 下载财务数据
@@ -19,7 +19,7 @@ end_time = datetime(2038,1,1)
 
 while 1:
     try:
-        xtdata.download_financial_data([stock], [], start_time.strftime('%Y%m%d'), end_time.strftime('%Y%m%d'), incrementally=False)
+        xtdata.download_financial_data([stock], [], start_time.strftime('%Y%m%d'), end_time.strftime('%Y%m%d'))
         break
     except RuntimeError as e:
         print('download error %s will retry', e)

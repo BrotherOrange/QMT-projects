@@ -23,15 +23,20 @@ This project uses a **src-layout** (`src/qmtquant/...`). The package is not on
 `sys.path` until you install it. Always install it editable before importing or
 running anything -- otherwise `import qmtquant` will fail.
 
-### Option A -- conda (recommended; mirrors the `qmt-projects` env)
+### Option A -- conda (recommended; the `qmt-projects-py310` env)
 
 ```bash
 conda env create -f environment.yml
-conda activate qmt-projects
+conda activate qmt-projects-py310
 # the editable dev install already ran via the environment.yml pip section;
 # re-run it any time pyproject.toml changes:
 pip install -e ".[dev]"
 ```
+
+> Python 3.10 is used so a single env serves both the backtrader backtest stack
+> and the xtquant live path. The installed miniQMT terminal ships `xtquant`
+> .pyd builds for cp36..cp311 only (NO cp312), so xtquant cannot be imported on
+> Python 3.12. See "xtquant / miniQMT integration" below.
 
 ### Option B -- plain venv / pip
 
@@ -138,8 +143,9 @@ versions compatible with numpy 1.26.x).
 
 ## Live trading roadmap (xtquant, after qualification)
 
-Live trading is currently an **empty shell** -- the abstractions exist, the
-xtquant integrations are stubs that raise `NotImplementedError` with TODOs.
+Market **data** via xtquant is now **implemented** (`XtQuantDataSource`, verified
+end-to-end: real daily bars -> backtrader backtest). The live **broker** (order
+placement) is still a stub raising `NotImplementedError`, pending the trading wiring.
 
 - `qmtquant/live/broker.py` -- the `Broker` ABC plus the
   `Order` / `Position` / `OrderSide` / `OrderType` domain types.
@@ -147,9 +153,11 @@ xtquant integrations are stubs that raise `NotImplementedError` with TODOs.
   qualification, implement it via `xtquant.xttrader`
   (`XtQuantTrader` / `StockAccount`: login, `order_stock`, `cancel_order_stock`,
   `query_stock_positions`, `query_stock_asset`).
-- `qmtquant/data/sources/xtquant_source.py` -- `XtQuantDataSource` stub that
-  slots in next to the CSV and synthetic sources; implement it via
-  `xtquant.xtdata` (`download_history_data` + `get_market_data_ex`).
+- `qmtquant/data/sources/xtquant_source.py` -- `XtQuantDataSource` **implemented**
+  via `xtquant.xtdata` (`download_history_data` + `get_market_data_ex`); pulls real
+  A-share OHLCV bars (daily/minute) into the `DataSource` contract. Usage:
+  `run_backtest(XtQuantDataSource(period="1d"), symbol="000001.SZ")` (needs the env
+  set up via `scripts/setup_xtquant.py` + a running terminal).
 
 Configuration for the live path is documented in `.env.example`
 (`QMTQUANT_XT_ACCOUNT_ID`, `QMTQUANT_MINI_QMT_PATH`). The backtest path needs
@@ -157,3 +165,55 @@ none of these.
 
 To keep CI green before qualification, **no** `import xtquant` appears at module
 top-level anywhere; xtquant is imported lazily inside the methods that need it.
+
+---
+
+## xtquant / miniQMT integration (verified working 2026-06-18)
+
+The 迅投 miniQMT terminal is installed and its `xtquant` API has been verified
+against the running terminal (both the data side `xtdata` and the trade-channel
+`xttrader.connect()` succeed).
+
+**Environment requirement -- Python 3.10/3.11 only.** The terminal-bundled
+`xtquant` ships compiled `.pyd` extensions for cp36..cp311; there is **no
+cp312** build. So xtquant works in `qmt-projects-py310` but **cannot** be
+imported under Python 3.12.
+
+**Making `from xtquant import xtdata` work in the env.** `xtquant` is not a
+pip package here -- it lives inside the terminal install. Run once per env:
+
+```bash
+conda activate qmt-projects-py310
+python scripts/setup_xtquant.py          # or: --bin "<path>\bin.x64"
+```
+
+This creates a **directory junction** `xtquant` inside the env's site-packages
+pointing at the terminal's `bin.x64/Lib/site-packages/xtquant`. So `import
+xtquant` resolves normally and its `.pyd` loads its DLLs from the junction
+target (verified: even `xttrader.connect()` needs no extra `add_dll_directory`).
+Crucially this exposes **only `xtquant`** -- NOT the terminal's large Python-3.6
+package tree (IPython / Pillow 6 / pyreadline / ...), which would otherwise
+shadow or break the env (an early "append the whole site-packages" attempt made
+`pytest` crash on the terminal's ancient `pyreadline`). After setup, any
+script / REPL / xtquant skill in the env can `import xtquant` directly. The
+default terminal path is baked into `scripts/setup_xtquant.py` -- override with
+`--bin` or the `QMTQUANT_QMT_BIN_PATH` env var if you move/reinstall QMT.
+(Junctions need no admin rights on NTFS; the script falls back to copying if the
+junction can't be created.)
+
+**Verified-working API surface** (6/8 of the `xtquant-api-*` skills): stock list
+& sectors, `get_instrument_detail`, `download_history_data` + `get_market_data_ex`
+(1m/5m/1d/tick), `download_history_data2` (with callback), and financial data.
+
+**This terminal build's quirks** (the skills were written for a newer xtquant;
+their scripts/docs have been corrected accordingly):
+
+- No `incrementally` kwarg on `download_history_data` / `download_history_data2`
+  / `download_financial_data` -- do not pass it (raises `TypeError`).
+- No `get_instrument_detail_list` -- loop over `get_instrument_detail` instead.
+- `download_history_data2` **blocks forever without a `callback`** -- always pass one.
+- The `stoppricedata` (涨跌停价) and `buysellvol` (内外盘) periods are **not
+  supported** by this build (`get_market_data_ex` errors with "周期错误"). The
+  two skills that relied on them were removed. Workarounds: read 涨跌停价 from
+  `get_instrument_detail` (`UpStopPrice` / `DownStopPrice`), or compute it from
+  `preClose` x board ratio; reconstruct 内外盘 from tick data if needed.

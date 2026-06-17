@@ -6,22 +6,31 @@
 # keeps all version constraints single-sourced in pyproject.toml -- there is no
 # second place where a pin can drift out of sync.
 #
-# Python 3.12 is used so a SINGLE environment serves both backtrader backtesting
-# and the xtquant / miniQMT (迅投) tooling, whose runtime targets Python 3.12.
-# The backtrader stack (backtrader 1.9.78.123 + numpy<2 + pandas<3 + matplotlib<3.8)
-# is verified working on 3.12 (full pytest suite passes).
+# Python 3.10 is used because the live-trading path depends on 迅投 miniQMT's
+# bundled `xtquant`, whose compiled extensions (.pyd) on the installed terminal
+# ship for cp36..cp311 ONLY -- there is NO cp312 build. So xtquant cannot be
+# imported under Python 3.12. Python 3.10 serves BOTH the backtrader backtest
+# stack (verified: full pytest suite passes on 3.10) and the xtquant live path.
+#
+# (A separate, older `qmt-projects-py312` env may still exist for backtest-only
+# work; it can run backtrader but can NOT import xtquant.)
 #
 # Usage:
 #   conda env create -f environment.yml
-#   conda activate qmt-projects-py312
+#   conda activate qmt-projects-py310
 #   # the editable install above already ran; re-run if pyproject changes:
 #   pip install -e ".[dev]"
-name: qmt-projects-py312
+#
+#   # ONE-TIME, to make `from xtquant import xtdata` work in this env
+#   # (creates a site-packages junction `xtquant` -> the miniQMT terminal):
+#   python scripts/setup_xtquant.py
+#   # see README ("xtquant / miniQMT integration") for details.
+name: qmt-projects-py310
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.12
+  - python=3.10
   - pip
   - pip:
       - -e .[dev]

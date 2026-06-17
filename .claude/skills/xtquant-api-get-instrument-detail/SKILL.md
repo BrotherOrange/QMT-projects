@@ -60,6 +60,10 @@
 
 ### get_instrument_detail_list(stock_list, iscomplete=False)
 
+> ⚠️ 兼容性（本机 `万联证券版` 终端实测，2026-06-18）：**此终端的 xtquant build 没有
+> `get_instrument_detail_list`**（仅更新版 xtquant 有）。在本机请改为**循环调用单个
+> `get_instrument_detail`**（见下方示例3）。
+
 批量获取多个合约的详细信息。
 
 **参数：**
@@ -117,9 +121,9 @@ if info:
 ```python
 from xtquant import xtdata
 
-# 批量获取
+# 批量获取（本机终端无 get_instrument_detail_list，循环调用单个接口即可）
 stock_list = ["000001.SZ", "600000.SH", "000002.SZ"]
-info_dict = xtdata.get_instrument_detail_list(stock_list)
+info_dict = {code: xtdata.get_instrument_detail(code) for code in stock_list}
 
 for stock_code, info in info_dict.items():
     if info:
@@ -168,7 +172,7 @@ if info:
 1. **股票代码格式**：股票代码需要包含交易所后缀，如 `"600000.SH"`（上海）、`"000001.SZ"`（深圳）
 2. **数据时效性**：合约信息是实时数据，反映当前市场状态
 3. **返回值检查**：函数可能返回 `None`，使用前需要进行判空处理
-4. **性能考虑**：批量查询建议使用 `get_instrument_detail_list` 而非循环调用 `get_instrument_detail`
+4. **性能考虑**：更新版 xtquant 可用 `get_instrument_detail_list` 批量查询；**本机 `万联证券版` 终端没有该函数**，请循环调用 `get_instrument_detail`（开销可接受）。
 
 ## 相关API
 
